@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: intelligent-image-kg-qa
+    runtime: docker
+    plan: starter
+    branch: deploy/online-deployment
+    healthCheckPath: /api/health
+    envVars:
+      - key: YOLO_MODEL
+        value: yolov8n.pt
+      - key: LLM_BASE_URL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        sync: false
