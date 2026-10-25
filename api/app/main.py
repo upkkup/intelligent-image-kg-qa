@@ -82,8 +82,8 @@ def wikidata_facts(entity_id: str):
     query = f'''
 SELECT ?propertyLabel ?valueLabel WHERE {{
   wd:{entity_id} ?p ?statement .
-  ?property wikibase:claim ?p; wikibase:statementProperty ?ps .
-  ?statement ?ps ?value .
+  ?property wikibase:directClaim ?p .
+  wd:{entity_id} ?p ?value .
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
   FILTER(isIRI(?value))
 }} LIMIT 15
@@ -107,7 +107,7 @@ def _llm_answer(question, image_context, entities, facts, model_override):
 @app.post("/api/qa")
 def question_answer(request: QARequest):
     question = request.question.strip()
-    terms = [t for t in re.sub(r"[^\\w\\s'-]", " ", question).split() if len(t)>2]
+    terms = [t for t in re.sub(r"[^\w\s'-]", " ", question).split() if len(t)>2]
     search_term = " ".join(terms[-4:]) if terms else question
     entities, facts, query, retrieval_error = [], [], None, None
     try:
@@ -119,13 +119,14 @@ def question_answer(request: QARequest):
     except Exception as exc:
         answer = None
         retrieval_error = (retrieval_error + "; " if retrieval_error else "") + f"LLM unavailable: {type(exc).__name__}"
+    llm_used = answer is not None
     if answer is None:
         if facts:
             summary = "; ".join(f"{x['property']}: {x['value']}" for x in facts[:8])
             answer = f"Retrieved Wikidata facts for {entities[0]['label']}: {summary}. This is retrieval output, not an LLM-generated conclusion."
         elif entities: answer = f"Possible Wikidata match: {entities[0]['label']} — {entities[0]['description'] or 'no description available'}. No supporting facts were retrieved."
         else: answer = "Insufficient evidence retrieved. Try a more specific entity name or configure a supported LLM provider."
-    return {"question":question,"answer":answer,"entities":entities,"facts":facts,"sparql_query":query,"retrieval_error":retrieval_error,"llm_used":bool(os.getenv("LLM_API_KEY") and os.getenv("LLM_BASE_URL"))}
+    return {"question":question,"answer":answer,"entities":entities,"facts":facts,"sparql_query":query,"retrieval_error":retrieval_error,"llm_used":llm_used}
 
 if STATIC_DIR.exists():
     assets = STATIC_DIR / "assets"
