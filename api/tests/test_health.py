@@ -41,7 +41,7 @@ def test_qa_returns_retrieval_facts_without_external_network(monkeypatch):
     monkeypatch.setattr(main, "wikidata_search", lambda term: [
         {"id": "Q142", "label": "France", "description": "country in Europe"}
     ])
-    monkeypatch.setattr(main, "wikidata_facts", lambda entity_id: (
+    monkeypatch.setattr(main, "wikidata_facts", lambda entity_id, property_id=None: (
         "SELECT ?propertyLabel ?valueLabel WHERE { }",
         [{"property": "capital", "value": "Paris"}],
     ))
@@ -97,3 +97,21 @@ def test_wikidata_facts_rejects_invalid_entity_id():
 
     with pytest.raises(ValueError):
         main.wikidata_facts("not-an-entity")
+
+
+def test_template_parser_maps_capital_question_to_property():
+    import app.main as main
+
+    assert main._detect_question_template("What is the capital of France?") == ("P36", "France")
+
+
+def test_template_parser_maps_population_question():
+    import app.main as main
+
+    assert main._detect_question_template("What is the population of Tokyo?") == ("P1082", "Tokyo")
+
+
+def test_unrecognized_question_uses_general_retrieval():
+    import app.main as main
+
+    assert main._detect_question_template("Tell me about the history of Japan") is None
