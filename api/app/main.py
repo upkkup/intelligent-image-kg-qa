@@ -114,12 +114,12 @@ SELECT ?propertyLabel ?value ?valueLabel WHERE {{
 def _detect_question_template(question: str) -> tuple[str, str] | None:
     """Map a small, explicit set of common question forms to Wikidata properties."""
     patterns = [
-        (r"\\bcapital\\s+of\\s+(.+?)\\??$", "P36"),
-        (r"\\bpopulation\\s+of\\s+(.+?)\\??$", "P1082"),
-        (r"\\bofficial\\s+languages?\\s+of\\s+(.+?)\\??$", "P37"),
-        (r"\\bcurrency\\s+of\\s+(.+?)\\??$", "P38"),
-        (r"\\bwho\\s+founded\\s+(.+?)\\??$", "P112"),
-        (r"\\bwhen\\s+was\\s+(.+?)\\s+founded\\b.*$", "P571"),
+        (r"\bcapital\s+of\s+(.+?)\??$", "P36"),
+        (r"\bpopulation\s+of\s+(.+?)\??$", "P1082"),
+        (r"\bofficial\s+languages?\s+of\s+(.+?)\??$", "P37"),
+        (r"\bcurrency\s+of\s+(.+?)\??$", "P38"),
+        (r"\bwho\s+founded\s+(.+?)\??$", "P112"),
+        (r"\bwhen\s+was\s+(.+?)\s+founded\b.*$", "P571"),
     ]
     for pattern, property_id in patterns:
         match = re.search(pattern, question.strip(), flags=re.IGNORECASE)
