@@ -81,7 +81,6 @@ def wikidata_facts(entity_id: str):
     if not re.fullmatch(r"Q[1-9][0-9]*", entity_id): raise ValueError("Invalid Wikidata entity ID")
     query = f'''
 SELECT ?propertyLabel ?valueLabel WHERE {{
-  wd:{entity_id} ?p ?statement .
   ?property wikibase:directClaim ?p .
   wd:{entity_id} ?p ?value .
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
