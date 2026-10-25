@@ -55,7 +55,7 @@ def health():
 async def analyze_image(file: UploadFile = File(...)):
     if file.content_type not in {"image/jpeg", "image/png", "image/webp", "image/bmp"}:
         raise HTTPException(415, "Upload a JPEG, PNG, WEBP, or BMP image.")
-    data = await file.read()
+    data = await file.read(MAX_IMAGE_BYTES + 1)
     if not data or len(data) > MAX_IMAGE_BYTES:
         raise HTTPException(413, "Image must be non-empty and at most 10 MB.")
     try: image = Image.open(io.BytesIO(data)).convert("RGB")
