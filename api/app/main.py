@@ -77,10 +77,22 @@ def wikidata_search(term: str):
     r.raise_for_status()
     return [{"id":x["id"],"label":x.get("label",""),"description":x.get("description","")} for x in r.json().get("search",[])]
 
-def wikidata_facts(entity_id: str):
-    if not re.fullmatch(r"Q[1-9][0-9]*", entity_id): raise ValueError("Invalid Wikidata entity ID")
-    query = f'''
-SELECT ?propertyLabel ?valueLabel WHERE {{
+def wikidata_facts(entity_id: str, property_id: str | None = None):
+    if not re.fullmatch(r"Q[1-9][0-9]*", entity_id):
+        raise ValueError("Invalid Wikidata entity ID")
+    if property_id is not None and not re.fullmatch(r"P[1-9][0-9]*", property_id):
+        raise ValueError("Invalid Wikidata property ID")
+    if property_id:
+        query = f'''
+SELECT ?propertyLabel ?value ?valueLabel WHERE {{
+  wd:{entity_id} wdt:{property_id} ?value .
+  BIND(wdt:{property_id} AS ?property)
+  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
+}} LIMIT 15
+'''
+    else:
+        query = f'''
+SELECT ?propertyLabel ?value ?valueLabel WHERE {{
   ?property wikibase:directClaim ?p .
   wd:{entity_id} ?p ?value .
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "en". }}
@@ -89,8 +101,33 @@ SELECT ?propertyLabel ?valueLabel WHERE {{
     r = requests.get(SPARQL_ENDPOINT, params={"query":query,"format":"json"}, headers={"User-Agent":USER_AGENT,"Accept":"application/sparql-results+json"}, timeout=18)
     r.raise_for_status()
     rows = r.json().get("results",{}).get("bindings",[])
-    facts = [{"property":x.get("propertyLabel",{}).get("value",""),"value":x.get("valueLabel",{}).get("value","")} for x in rows]
+    facts = [
+        {
+            "property": row.get("propertyLabel", {}).get("value", property_id or ""),
+            "value": row.get("valueLabel", {}).get("value") or row.get("value", {}).get("value", ""),
+        }
+        for row in rows
+    ]
     return query.strip(), facts
+
+
+def _detect_question_template(question: str) -> tuple[str, str] | None:
+    """Map a small, explicit set of common question forms to Wikidata properties."""
+    patterns = [
+        (r"\\bcapital\\s+of\\s+(.+?)\\??$", "P36"),
+        (r"\\bpopulation\\s+of\\s+(.+?)\\??$", "P1082"),
+        (r"\\bofficial\\s+languages?\\s+of\\s+(.+?)\\??$", "P37"),
+        (r"\\bcurrency\\s+of\\s+(.+?)\\??$", "P38"),
+        (r"\\bwho\\s+founded\\s+(.+?)\\??$", "P112"),
+        (r"\\bwhen\\s+was\\s+(.+?)\\s+founded\\b.*$", "P571"),
+    ]
+    for pattern, property_id in patterns:
+        match = re.search(pattern, question.strip(), flags=re.IGNORECASE)
+        if match:
+            target = re.sub(r"[?.,!;:]+$", "", match.group(1)).strip()
+            if target:
+                return property_id, target
+    return None
 
 def _llm_answer(question, image_context, entities, facts, model_override):
     base_url, key = os.getenv("LLM_BASE_URL"), os.getenv("LLM_API_KEY")
@@ -136,14 +173,17 @@ def question_answer(request: QARequest):
     question = request.question.strip()
     entities, facts, query, retrieval_error = [], [], None, None
     search_term = None
+    template = _detect_question_template(question)
+    property_id = template[0] if template else None
+    candidates = [template[1]] + _candidate_search_terms(question) if template else _candidate_search_terms(question)
     try:
-        for candidate in _candidate_search_terms(question):
+        for candidate in candidates:
             matches = wikidata_search(candidate)
             if matches:
                 entities, search_term = matches, candidate
                 break
         if entities:
-            query, facts = wikidata_facts(entities[0]["id"])
+            query, facts = wikidata_facts(entities[0]["id"], property_id=property_id)
     except Exception as exc:
         retrieval_error = f"Wikidata retrieval unavailable: {type(exc).__name__}"
     try:
@@ -162,7 +202,7 @@ def question_answer(request: QARequest):
             answer = f"Possible Wikidata match: {entities[0]['label']} — {entities[0]['description'] or 'no description available'}. No supporting facts were retrieved."
         else:
             answer = "Insufficient evidence retrieved. Try a more specific entity name or configure a supported LLM provider."
-    return {"question": question, "search_term": search_term, "answer": answer, "entities": entities,
+    return {"question": question, "search_term": search_term, "query_method": "template_sparql" if property_id else "general_kg_retrieval", "property_id": property_id, "answer": answer, "entities": entities,
             "facts": facts, "sparql_query": query, "retrieval_error": retrieval_error, "llm_used": llm_used}
 
 if STATIC_DIR.exists():
