@@ -54,3 +54,46 @@ def test_qa_returns_retrieval_facts_without_external_network(monkeypatch):
     assert payload["facts"] == [{"property": "capital", "value": "Paris"}]
     assert "Paris" in payload["answer"]
     assert payload["llm_used"] is False
+
+
+def test_question_search_candidates_remove_question_fillers():
+    import app.main as main
+
+    candidates = main._candidate_search_terms("What is the capital of France?")
+    assert "France" in candidates
+    assert "capital France" in candidates
+    assert all("what is the capital" != candidate.casefold() for candidate in candidates)
+
+
+def test_wikidata_facts_query_includes_literal_values(monkeypatch):
+    import app.main as main
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"results": {"bindings": [
+                {"propertyLabel": {"value": "population"}, "valueLabel": {"value": "68000000"}}
+            ]}}
+
+    captured = {}
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["params"] = kwargs["params"]
+        return FakeResponse()
+
+    monkeypatch.setattr(main.requests, "get", fake_get)
+    query, facts = main.wikidata_facts("Q142")
+    assert "wd:Q142" in query
+    assert "wikibase:directClaim" in query
+    assert "FILTER(isIRI" not in query
+    assert facts[0]["value"] == "68000000"
+
+
+def test_wikidata_facts_rejects_invalid_entity_id():
+    import pytest
+    import app.main as main
+
+    with pytest.raises(ValueError):
+        main.wikidata_facts("not-an-entity")
